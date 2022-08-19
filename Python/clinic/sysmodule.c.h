@@ -929,6 +929,49 @@ sys__debugmallocstats(PyObject *module, PyObject *Py_UNUSED(ignored))
     return sys__debugmallocstats_impl(module);
 }
 
+#if defined(WITH_MIMALLOC)
+
+PyDoc_STRVAR(sys__mi_collect__doc__,
+"_mi_collect($module, /, force=False)\n"
+"--\n"
+"\n");
+
+#define SYS__MI_COLLECT_METHODDEF    \
+    {"_mi_collect", _PyCFunction_CAST(sys__mi_collect), METH_FASTCALL|METH_KEYWORDS, sys__mi_collect__doc__},
+
+static PyObject *
+sys__mi_collect_impl(PyObject *module, int force);
+
+static PyObject *
+sys__mi_collect(PyObject *module, PyObject *const *args, Py_ssize_t nargs, PyObject *kwnames)
+{
+    PyObject *return_value = NULL;
+    static const char * const _keywords[] = {"force", NULL};
+    static _PyArg_Parser _parser = {NULL, _keywords, "_mi_collect", 0};
+    PyObject *argsbuf[1];
+    Py_ssize_t noptargs = nargs + (kwnames ? PyTuple_GET_SIZE(kwnames) : 0) - 0;
+    int force = 0;
+
+    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser, 0, 1, 0, argsbuf);
+    if (!args) {
+        goto exit;
+    }
+    if (!noptargs) {
+        goto skip_optional_pos;
+    }
+    force = PyObject_IsTrue(args[0]);
+    if (force < 0) {
+        goto exit;
+    }
+skip_optional_pos:
+    return_value = sys__mi_collect_impl(module, force);
+
+exit:
+    return return_value;
+}
+
+#endif /* defined(WITH_MIMALLOC) */
+
 PyDoc_STRVAR(sys__clear_type_cache__doc__,
 "_clear_type_cache($module, /)\n"
 "--\n"
@@ -1011,7 +1054,11 @@ sys_getandroidapilevel(PyObject *module, PyObject *Py_UNUSED(ignored))
     #define SYS_GETTOTALREFCOUNT_METHODDEF
 #endif /* !defined(SYS_GETTOTALREFCOUNT_METHODDEF) */
 
+#ifndef SYS__MI_COLLECT_METHODDEF
+    #define SYS__MI_COLLECT_METHODDEF
+#endif /* !defined(SYS__MI_COLLECT_METHODDEF) */
+
 #ifndef SYS_GETANDROIDAPILEVEL_METHODDEF
     #define SYS_GETANDROIDAPILEVEL_METHODDEF
 #endif /* !defined(SYS_GETANDROIDAPILEVEL_METHODDEF) */
-/*[clinic end generated code: output=60756bc6f683e0c8 input=a9049054013a1b77]*/
+/*[clinic end generated code: output=52db3c8a5fb2ca4d input=a9049054013a1b77]*/

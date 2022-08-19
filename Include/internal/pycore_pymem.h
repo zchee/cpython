@@ -103,7 +103,7 @@ void _PyObject_VirtualFree(void *, size_t size);
 PyAPI_FUNC(Py_ssize_t) _Py_GetAllocatedBlocks(void);
 
 /* Macros */
-#ifdef WITH_PYMALLOC
+#if defined(WITH_PYMALLOC) || defined(WITH_MIMALLOC)
 // Export the symbol for the 3rd party guppy3 project
 PyAPI_FUNC(int) _PyObject_DebugMallocStats(FILE *out);
 #endif

@@ -20,6 +20,9 @@ Data members:
 #include "pycore_code.h"          // _Py_QuickenedCount
 #include "pycore_frame.h"         // _PyInterpreterFrame
 #include "pycore_initconfig.h"    // _PyStatus_EXCEPTION()
+#ifdef WITH_MIMALLOC
+#  include "pycore_mimalloc.h"    // MI_SECURE, MI_DEBUG
+#endif
 #include "pycore_namespace.h"     // _PyNamespace_New()
 #include "pycore_object.h"        // _PyObject_IS_GC()
 #include "pycore_pathconfig.h"    // _PyPathConfig_ComputeSysPath0()
@@ -1862,7 +1865,7 @@ static PyObject *
 sys__debugmallocstats_impl(PyObject *module)
 /*[clinic end generated code: output=ec3565f8c7cee46a input=33c0c9c416f98424]*/
 {
-#ifdef WITH_PYMALLOC
+#if defined(WITH_PYMALLOC) || defined(WITH_MIMALLOC)
     if (_PyObject_DebugMallocStats(stderr)) {
         fputc('\n', stderr);
     }
@@ -1870,6 +1873,88 @@ sys__debugmallocstats_impl(PyObject *module)
     _PyObject_DebugTypeStats(stderr);
 
     Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(malloc_info__doc__,
+"sys._malloc_info\n\
+\n\
+Memory allocator info as a named tuple.");
+
+static PyTypeObject MallocInfoType;
+
+static PyStructSequence_Field malloc_info_fields[] = {
+    {"allocator", "current memory allocator"},
+    {"with_pymalloc", "supports pymalloc (aka obmalloc)"},
+    {"with_mimalloc", "supports mimalloc"},
+    {"mimalloc_secure", "mimalloc security level"},
+    {"mimalloc_debug", "mimalloc debug level"},
+    {0}
+};
+
+static PyStructSequence_Desc malloc_info_desc = {
+    "sys._malloc_info",     /* name */
+    malloc_info__doc__ ,    /* doc */
+    malloc_info_fields,     /* fields */
+    5
+};
+
+static PyObject *
+make_malloc_info(void)
+{
+    PyObject *malloc_info;
+    const char *name;
+    PyObject *v;
+    int pos = 0;
+
+    malloc_info = PyStructSequence_New(&MallocInfoType);
+    if (malloc_info == NULL) {
+        return NULL;
+    }
+
+#define SetIntItem(flag) \
+    PyStructSequence_SET_ITEM(malloc_info, pos++, PyLong_FromLong(flag))
+
+    name = _PyMem_GetCurrentAllocatorName();
+    if (name == NULL) {
+        name = "unknown";
+    }
+    v = PyUnicode_FromString(name);
+    if (v == NULL) {
+        Py_DECREF(malloc_info);
+        return NULL;
+    }
+
+    PyStructSequence_SET_ITEM(malloc_info, pos++, v);
+
+#ifdef WITH_PYMALLOC
+    v = Py_True;
+#else
+    v = Py_False;
+#endif
+    PyStructSequence_SET_ITEM(malloc_info, pos++, _Py_NewRef(v));
+
+#ifdef WITH_MIMALLOC
+    v = Py_True;
+#else
+    v = Py_False;
+#endif
+    PyStructSequence_SET_ITEM(malloc_info, pos++, _Py_NewRef(v));
+
+#ifdef WITH_MIMALLOC
+    SetIntItem(MI_SECURE);
+    SetIntItem(MI_DEBUG);
+#else
+    SetIntItem(-1);
+    SetIntItem(-1);
+#endif
+
+#undef SetIntItem
+
+    if (PyErr_Occurred()) {
+        Py_CLEAR(malloc_info);
+        return NULL;
+    }
+    return malloc_info;
 }
 
 #ifdef Py_TRACE_REFS
@@ -1886,6 +1971,22 @@ extern PyObject *_Py_GetDXProfile(PyObject *,  PyObject *);
 }
 #endif
 
+#ifdef WITH_MIMALLOC
+/*[clinic input]
+sys._mi_collect
+
+    force: bool = False
+
+[clinic start generated code]*/
+
+static PyObject *
+sys__mi_collect_impl(PyObject *module, int force)
+/*[clinic end generated code: output=c674624749771706 input=f6a11d7d4e5731c8]*/
+{
+    mi_collect(force);
+    Py_RETURN_NONE;
+}
+#endif
 
 /*[clinic input]
 sys._clear_type_cache
@@ -1983,6 +2084,7 @@ static PyMethodDef sys_methods[] = {
     SYS_GET_ASYNCGEN_HOOKS_METHODDEF
     SYS_GETANDROIDAPILEVEL_METHODDEF
     SYS_UNRAISABLEHOOK_METHODDEF
+    SYS__MI_COLLECT_METHODDEF
     {NULL, NULL}  // sentinel
 };
 
@@ -2814,6 +2916,16 @@ _PySys_InitCore(PyThreadState *tstate, PyObject *sysdict)
 
     SET_SYS("thread_info", PyThread_GetInfo());
 
+    /* malloc_info */
+    if (MallocInfoType.tp_name == NULL) {
+        if (_PyStructSequence_InitType(&MallocInfoType,
+                                       &malloc_info_desc,
+                                       Py_TPFLAGS_DISALLOW_INSTANTIATION) < 0) {
+            goto type_init_failed;
+        }
+    }
+    SET_SYS("_malloc_info", make_malloc_info());
+
     /* initialize asyncgen_hooks */
     if (AsyncGenHooksType.tp_name == NULL) {
         if (PyStructSequence_InitType2(
@@ -3065,6 +3177,7 @@ _PySys_Fini(PyInterpreterState *interp)
 #if defined(MS_WINDOWS)
         _PyStructSequence_FiniType(&WindowsVersionType);
 #endif
+        _PyStructSequence_FiniType(&MallocInfoType);
         _PyStructSequence_FiniType(&Hash_InfoType);
         _PyStructSequence_FiniType(&AsyncGenHooksType);
     }
